@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Panel Analítico Boost AI - General</title>
+    <!-- Librerías: Chart.js, DataLabels, y PapaParse -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    
+    <style>
+        :root { 
+            /* Paleta Oficial Bold */
+            --bold-blue: #121E6C; 
+            --bold-red: #EE424E; 
+            --bold-magenta: #BC3A55; 
+            --bold-plum: #742F5E; 
+            --surface: #ffffff; 
+            --bg: #f4f6f9; 
+            --text: #202124; 
+            --text-light: #5f6368; 
+            --border: #dadce0; 
+            --pending: #fce8e6;
+            --progress: #fef7e0;
+            --completed: #e6f4ea;
+
+            --primary: var(--bold-blue);
+            --chat-bg: #efeae2; 
+            --user-msg: var(--completed); 
+            --bot-msg: var(--surface); 
+        }
+        
+        * { box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; margin: 0; padding: 10px; overflow: hidden; font-family: 'Segoe UI', Tahoma, sans-serif; background-color: var(--bg); color: var(--text); }
+        
+        #mainLayout { height: 100%; display: flex; flex-direction: column; transition: opacity 0.3s ease; }
+        .top-bar { background: var(--surface); padding: 10px 15px; border-radius: 8px; margin-bottom: 10px; display: flex; gap: 10px; align-items: flex-end; justify-content: space-between; border: 1px solid var(--border); flex-wrap: wrap; }
+        .filter-group { display: flex; flex-direction: column; position: relative; }
+        .filter-group label { font-size: 10px; font-weight: bold; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase; }
+        select, input[type="date"], input[type="text"] { padding: 6px 10px; border-radius: 5px; border: 1px solid var(--border); outline: none; font-size: 12px; color: var(--text); background: var(--surface); }
+        
+        .btn { padding: 7px 12px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s; white-space: nowrap; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--bold-plum); }
+        .btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: var(--border); }
+        .btn-export { background: var(--bold-magenta); color: white; } 
+        .btn-export:hover { background: var(--bold-red); }
+        .btn-import { background: #e6f2ff; color: var(--bold-blue); border: 1px solid var(--bold-blue); }
+        .btn-import:hover { background: #d0e7ff; }
+
+        .container { display: flex; gap: 15px; flex: 1; min-height: 0; }
+        
+        .dashboard-col { flex: 1.5; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding-right: 5px; height: 100%; }
+        
+        /* Métricas */
+        .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .metric-card { background: var(--surface); padding: 10px; border-radius: 8px; text-align: center; border: 1px solid var(--border); }
+        .metric-value { font-size: 20px; font-weight: bold; color: var(--primary); margin: 2px 0; }
+        .metric-title { font-size: 10px; color: var(--text-light); font-weight: 600; text-transform: uppercase; }
+        
+        .card { background: var(--surface); padding: 12px; border-radius: 8px; border: 1px solid var(--border); }
+        
+        /* Contenedores de Gráficas y Tablas */
+        .grid-row { display: flex; gap: 10px; min-height: 200px; flex-shrink: 0; }
+        .chart-container { flex: 1; position: relative; width: 100%; height: 100%; min-height: 150px;}
+        
+        /* Tablas Analíticas */
+        .data-table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 5px; }
+        .data-table th { background: var(--bg); text-align: left; padding: 6px 8px; color: var(--text-light); border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 1;}
+        .data-table td { padding: 6px 8px; border-bottom: 1px solid var(--bg); }
+        .data-table tr { transition: background-color 0.2s; }
+        .data-table tr:hover { background-color: var(--progress); cursor: pointer; }
+        .data-table tr.active { background-color: var(--progress) !important; border-left: 4px solid var(--bold-blue); font-weight: bold; color: var(--bold-blue); }
+        
+        /* Modal Gestor */
+        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); justify-content: center; align-items: center; }
+        .modal-content { background-color: var(--surface); padding: 20px; border-radius: 8px; width: 85%; max-width: 900px; max-height: 85vh; overflow-y: auto; border: 1px solid var(--border); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px; }
+        
+        /* Listado de Sesiones */
+        .sessions-col { flex: 0.8; background: var(--surface); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; height: 100%; border: 1px solid var(--border); padding: 16px 16px 10px 16px; min-width: 0; }
+        .sessions-header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px; gap: 10px; flex-shrink: 0; }
+        .sessions-header h3 { margin: 0; font-size: 16px; color: var(--bold-blue); }
+        .sessions-sub { font-size: 11px; color: var(--text-light); margin-top: 4px; }
+        .sessions-sub b { color: var(--bold-red); }
+        .page-size { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: bold; color: var(--text-light); }
+        .sessions-table-wrap { flex: 1; overflow-y: auto; min-height: 0; }
+        .sessions-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .sessions-table th { background: var(--surface); text-align: left; padding: 10px 8px; color: var(--text-light); border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 1; }
+        .sessions-table td { padding: 8px; border-bottom: 1px solid var(--bg); }
+        .sessions-table tbody tr:hover { background-color: var(--bg); }
+        .sessions-empty { text-align: center; color: var(--text-light); padding: 40px 10px !important; font-size: 13px; }
+        #paginationControls { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding-top: 10px; flex-shrink: 0; }
+
+        #syncToast { position: fixed; bottom: 15px; left: 15px; background: var(--bold-blue); color: white; padding: 10px 16px; border-radius: 20px; font-size: 12px; font-weight: bold; z-index: 3000; box-shadow: 0 4px 10px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 8px; transition: opacity 0.3s ease; }
+        .spinner { border: 2px solid rgba(255,255,255,0.3); border-left-color: white; border-radius: 50%; width: 14px; height: 14px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* Buscador dentro de los multiselect */
+        .dd-search { width: 100%; margin-bottom: 6px; }
+        .dd-item { cursor: pointer; display: flex; gap: 6px; padding: 4px 0; font-size: 12px; align-items: flex-start; }
+        .dd-count { color: var(--text-light); font-size: 10px; margin-left: auto; padding-left: 6px; white-space: nowrap; }
+
+        /* Configuración */
+        .cfg-section { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 14px; }
+        .cfg-section h4 { margin: 0 0 8px 0; font-size: 13px; color: var(--bold-blue); }
+        .cfg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .cfg-grid .filter-group input { width: 100%; }
+        .cfg-help { font-size: 11px; color: var(--text-light); margin: 4px 0 0 0; }
+        #columnWarning { display: none; font-size: 12px; background: var(--pending); color: var(--text); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--bold-red); }
+
+        #updateBox { position: fixed; bottom: 15px; right: 15px; background: rgba(18, 30, 108, 0.85); color: white; padding: 6px 12px; border-radius: 6px; font-size: 11px; z-index: 2900; box-shadow: 0 2px 5px rgba(0,0,0,0.3); pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <div id="syncToast" style="display: none;">
+        <div class="spinner"></div>
+        <span id="syncText">Procesando...</span>
+    </div>
+
+    <div id="updateBox">
+        🕒 Última importación: <span id="lblLastUpdate" style="font-weight: bold;">Sin datos cargados</span>
+    </div>
+
+    <input type="file" id="csvFileInput" accept=".csv,text/csv" multiple style="display:none" onchange="procesarArchivoCSV(event)">
+
+    <div id="mainLayout">
+        
+        <!-- ========================================================================= -->
+        <!-- MÓDULO DE TÍTULO INDEPENDIENTE (PUEDES COPIARLO Y PEGARLO EN OTROS HTML)  -->
+        <!-- ========================================================================= -->
+        <div style="background: linear-gradient(90deg, #121E6C 0%, #742F5E 100%); color: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-family: 'Segoe UI', Tahoma, sans-serif; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="background: white; color: #121E6C; padding: 5px 12px; border-radius: 6px; font-weight: 900; font-size: 18px; letter-spacing: 1px;">BOLD</div>
+                <div>
+                    <h1 style="margin: 0; font-size: 18px; font-weight: bold; letter-spacing: 0.5px;">Panel Analítico Boost AI</h1>
+                    <div style="font-size: 11px; opacity: 0.85; margin-top: 2px; text-transform: uppercase; letter-spacing: 1px;">Monitoreo y Análisis de Casos | <span id="lblAgentName">Sin agente cargado</span></div>
+                </div>
+            </div>
+            <div>
+                <span style="font-size: 11px; font-weight: bold; background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.3);">Versión 3.0 · General</span>
+            </div>
+        </div>
+        <!-- ========================================================================= -->
+        <!-- FIN MÓDULO DE TÍTULO                                                      -->
+        <!-- ========================================================================= -->
+
+        <!-- BARRA SUPERIOR DE FILTROS -->
+        <div class="top-bar">
+            <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; flex: 1;">
+                <div class="filter-group"><label>Fecha Desde:</label><input type="date" id="filterDateStart" onchange="aplicarFiltros()"></div>
+                <div class="filter-group"><label>Fecha Hasta:</label><input type="date" id="filterDateEnd" onchange="aplicarFiltros()"></div>
+                <div class="filter-group"><label>Semana:</label><select id="filterSemana" onchange="aplicarFiltros()"><option value="all">Todas</option></select></div>
+                <div class="filter-group">
+                    <label>Estado Chat:</label>
+                    <select id="filterEscalation" onchange="aplicarFiltros()">
+                        <option value="all">Todas</option>
+                        <option value="escalated">🔴 Escaladas</option>
+                        <option value="deflected">🟢 Resueltas (Bot)</option>
+                    </select>
+                </div>
+                <!-- Multiselect Intenciones -->
+                <div class="filter-group">
+                    <label>Intenciones (`intent`):</label>
+                    <button class="btn btn-secondary" id="btnMultiIntent" onclick="toggleDropdown('dropdownMultiIntent')" style="text-align: left; min-width: 140px; display: flex; justify-content: space-between; align-items: center;">
+                        <span id="lblMultiIntent" style="overflow: hidden; text-overflow: ellipsis; max-width: 110px;">Todas</span><span style="font-size: 10px; margin-left: 5px;">▼</span>
+                    </button>
+                    <div id="dropdownMultiIntent" style="display: none; position: absolute; top: 100%; left: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; min-width: 320px; max-height: 340px; overflow-y: auto; padding: 10px;">
+                        <div style="padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 6px; display: flex; justify-content: space-between;">
+                            <button class="btn btn-secondary" onclick="seleccionarTodas('chk-intent', true)" style="padding: 3px 8px; font-size: 11px;">Marcar Todas</button>
+                            <button class="btn btn-secondary" onclick="seleccionarTodas('chk-intent', false)" style="padding: 3px 8px; font-size: 11px;">Desmarcar Todas</button>
+                        </div>
+                        <input type="text" class="dd-search" placeholder="Buscar intención..." oninput="filtrarListaDropdown('checkboxesMultiIntent', this.value)">
+                        <div id="checkboxesMultiIntent"></div>
+                    </div>
+                </div>
+                <!-- Multiselect Agentes -->
+                <div class="filter-group">
+                    <label>Agentes Gen (`generative`):</label>
+                    <button class="btn btn-secondary" id="btnMultiAction" onclick="toggleDropdown('dropdownMultiAction')" style="text-align: left; min-width: 140px; display: flex; justify-content: space-between; align-items: center;">
+                        <span id="lblMultiAction" style="overflow: hidden; text-overflow: ellipsis; max-width: 110px;">Todos</span><span style="font-size: 10px; margin-left: 5px;">▼</span>
+                    </button>
+                    <div id="dropdownMultiAction" style="display: none; position: absolute; top: 100%; left: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; min-width: 320px; max-height: 280px; overflow-y: auto; padding: 10px;">
+                        <div style="padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 6px; display: flex; justify-content: space-between;">
+                            <button class="btn btn-secondary" onclick="seleccionarTodas('chk-action', true)" style="padding: 3px 8px; font-size: 11px;">Marcar Todos</button>
+                            <button class="btn btn-secondary" onclick="seleccionarTodas('chk-action', false)" style="padding: 3px 8px; font-size: 11px;">Desmarcar Todos</button>
+                        </div>
+                        <input type="text" class="dd-search" placeholder="Buscar agente o ID..." oninput="filtrarListaDropdown('checkboxesMultiAction', this.value)">
+                        <div id="checkboxesMultiAction"></div>
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label>Valoración Cliente:</label>
+                    <select id="filterFeedback" onchange="aplicarFiltros()" style="min-width: 120px;">
+                        <option value="all">Todas</option>
+                        <option value="thumbs_up">👍 Útil</option>
+                        <option value="thumbs_down">👎 No útil</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>&nbsp;</label>
+                    <button class="btn btn-secondary" onclick="limpiarFiltros()" style="background-color: #ffebee; color: var(--bold-red); border-color: var(--bold-red);">🧹 Limpiar Todo</button>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: flex-end;">
+                <button class="btn btn-primary" onclick="accionProtegida('config')">⚙️ Configuración</button>
+                <button class="btn btn-import" onclick="accionProtegida('importar')">⬆️ Importar CSV</button>
+                <button class="btn btn-export" onclick="accionProtegida('exportar')">📥 Exportar CSV</button>
+            </div>
+        </div>
+
+        <div class="container">
+            <!-- COLUMNA IZQUIERDA: DASHBOARD ANALÍTICO -->
+            <div class="dashboard-col">
+
+                <!-- Estado vacío: visible mientras no se haya importado un CSV -->
+                <div id="emptyState" style="font-size: 13px; background: var(--progress); color: var(--text); padding: 14px 16px; border-radius: 8px; border: 1px dashed var(--bold-blue); text-align: center;">
+                    📂 <b>No hay datos cargados.</b> Pulsa <b>⬆️ Importar CSV</b> (arriba a la derecha) y selecciona uno o varios exports de conversaciones de Boost AI de cualquier agente. Las intenciones y los agentes generativos se detectan automáticamente del archivo.
+                </div>
+                <div id="columnWarning"></div>
+                
+                <div style="font-size: 11px; background: #e3f2fd; color: #0d47a1; padding: 6px 12px; border-radius: 6px; border: 1px solid #bbdefb;">
+                    💡 <b>Tip de interactividad:</b> Puedes hacer clic sobre las barras, donas o filas de las tablas para <b>filtrar cruzado</b>. Clickea nuevamente para limpiar esa selección.
+                </div>
+
+                <!-- 1. Tarjetas KPI -->
+                <div class="metrics-grid">
+                    <div class="metric-card"><div class="metric-title">Sesiones Totales</div><div class="metric-value" id="valTotalSessions" style="color: var(--bold-blue);">0</div></div>
+                    <div class="metric-card"><div class="metric-title">Contención (Deflection)</div><div class="metric-value" id="valDeflection" style="color: var(--bold-blue);">0%</div></div>
+                    <div class="metric-card"><div class="metric-title">Tasa de Escalamiento</div><div class="metric-value" id="valEscalation" style="color: var(--bold-red);">0%</div></div>
+                    <div class="metric-card"><div class="metric-title">Promedio Msjs / Sesión</div><div class="metric-value" id="valAvgMsgs" style="color: var(--bold-plum);">0</div></div>
+                </div>
+
+                <!-- 2. Gráficas Principales: Diaria y Semanal -->
+                <div class="grid-row">
+                    <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 12px; color: var(--text-light); text-transform: uppercase;">📈 Tendencia Diaria</h4>
+                        <div class="chart-container"><canvas id="trendChart"></canvas></div>
+                    </div>
+                    <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 12px; color: var(--text-light); text-transform: uppercase;">📅 Tendencia Semanal</h4>
+                        <div class="chart-container"><canvas id="weeklyChart"></canvas></div>
+                    </div>
+                </div>
+
+                <!-- 3. Gráficas Secundarias: Donas -->
+                <div class="grid-row">
+                    <div class="card" style="flex: 1.5; display: flex; flex-direction: column;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 12px; color: var(--text-light); text-transform: uppercase;">🧠 Top Intenciones Detectadas</h4>
+                        <div class="chart-container"><canvas id="intentsChart"></canvas></div>
+                    </div>
+                    <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 12px; color: var(--text-light); text-transform: uppercase;">⭐ Satisfacción (CSAT)</h4>
+                        <div class="chart-container"><canvas id="csatChart"></canvas></div>
+                    </div>
+                </div>
+
+                <!-- 4. NUEVA GRÁFICA: Top 5 Último Agente Antes de Escalar -->
+                <div class="grid-row">
+                    <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 11px; color: var(--text-light); text-transform: uppercase;">⚠️ Top 5: Último Agente Previo a Transferencia</h4>
+                        <div class="chart-container"><canvas id="lastAgentChart"></canvas></div>
+                    </div>
+                </div>
+
+                <!-- 5. TABLAS DE ANÁLISIS DE CASOS -->
+                <div class="grid-row">
+                    <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+                        <!-- ENCABEZADO CON FILTROS LOCALES -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="margin: 0; font-size: 11px; color: var(--text-light); text-transform: uppercase;">📅 Tabla de Fechas</h4>
+                            <div style="display: flex; gap: 5px; align-items: center;">
+                                <input type="date" id="localDateStart" style="padding: 3px 5px; font-size: 10px; border-radius: 4px; border: 1px solid var(--border);" onchange="renderizarTablas()" title="Fecha Desde">
+                                <span style="font-size: 9px; color: var(--text-light);">-</span>
+                                <input type="date" id="localDateEnd" style="padding: 3px 5px; font-size: 10px; border-radius: 4px; border: 1px solid var(--border);" onchange="renderizarTablas()" title="Fecha Hasta">
+                            </div>
+                        </div>
+                        <div style="flex: 1; overflow-y: auto;">
+                            <table class="data-table">
+                                <thead><tr><th>Fecha</th><th>Total</th><th>Resueltas</th><th>Escaladas</th><th>% Contención</th></tr></thead>
+                                <tbody id="tableDateBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 11px; color: var(--text-light); text-transform: uppercase;">🤖 Rendimiento de Agentes Generativos</h4>
+                        <div style="flex: 1; overflow-y: auto;">
+                            <table class="data-table">
+                                <thead><tr><th>Agente / Flujo (`action_id`)</th><th>Casos</th><th>Escalados</th><th>% Falla</th></tr></thead>
+                                <tbody id="tableAgentBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- COLUMNA DERECHA: LISTADO DE SESIONES -->
+            <div class="sessions-col">
+                <div class="sessions-header">
+                    <div>
+                        <h3>📋 Listado de Sesiones</h3>
+                        <div class="sessions-sub" id="sessionsSubtitle">Top <b>0</b> recientes</div>
+                    </div>
+                    <div class="page-size">
+                        <label for="pageSizeSelect">Mostrar:</label>
+                        <select id="pageSizeSelect" onchange="cambiarTamanoPagina()">
+                            <option value="5">5</option>
+                            <option value="10">10</option>
+                            <option value="15">15</option>
+                            <option value="20" selected>20</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="sessions-table-wrap">
+                    <table class="sessions-table">
+                        <thead><tr><th>ID Sesión</th><th>Fecha</th><th>Estado</th><th>Acción</th></tr></thead>
+                        <tbody id="sessionsTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="paginationControls"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CONFIGURACIÓN DEL PANEL -->
+    <input type="file" id="configFileInput" accept=".json,application/json" style="display:none" onchange="importarConfiguracion(event)">
+    <div id="modalConfig" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="margin: 0; color: var(--bold-blue);">⚙️ Configuración del Panel</h3>
+                <span style="cursor: pointer; font-size: 20px; font-weight: bold; color: var(--text-light);" onclick="cerrarModalConfig()">&times;</span>
+            </div>
+
+            <div class="cfg-section">
+                <h4>General</h4>
+                <div class="cfg-grid">
+                    <div class="filter-group">
+                        <label>Nombre del agente / producto</label>
+                        <input type="text" id="cfgNombre" placeholder="Ej.: LOG Agent, Pagos, Onboarding...">
+                        <p class="cfg-help">Se muestra en el encabezado y en el nombre del CSV exportado. Si lo dejas vacío se usa el nombre del archivo importado.</p>
+                    </div>
+                    <div class="filter-group">
+                        <label>ID de entorno (log_environment_id)</label>
+                        <input type="text" id="cfgEnv" placeholder="1">
+                    </div>
+                    <div class="filter-group" style="grid-column: 1 / -1;">
+                        <label>URL del admin panel de Boost AI</label>
+                        <input type="text" id="cfgUrl" placeholder="https://adminpanel-bold.boost.ai">
+                        <p class="cfg-help">Se usa para el botón «Ver Chat» del listado de sesiones. Si la dejas vacía, el botón copia el ID de sesión.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cfg-section">
+                <h4>Nombres de agentes generativos (<code>generative</code>)</h4>
+                <p class="cfg-help" style="margin-bottom: 8px;">Los IDs se detectan del CSV cargado. Asigna un nombre legible a cada uno; los nombres se guardan en este navegador y sirven para cualquier archivo que contenga esos IDs.</p>
+                <table class="data-table">
+                    <thead><tr><th style="width: 110px;">ID de Acción</th><th style="width: 80px;">Apariciones</th><th>Nombre explícito</th></tr></thead>
+                    <tbody id="tableAgentsBody"></tbody>
+                </table>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button class="btn btn-secondary" onclick="exportarConfiguracion()">📤 Exportar configuración</button>
+                    <button class="btn btn-secondary" onclick="document.getElementById('configFileInput').click()">📥 Importar configuración</button>
+                    <button class="btn btn-secondary" onclick="restablecerConfiguracion()" style="color: var(--bold-red); border-color: var(--bold-red);">↺ Restablecer</button>
+                </div>
+                <button class="btn btn-primary" onclick="guardarConfiguracion()">💾 Guardar y aplicar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        Chart.register(ChartDataLabels);
+        Chart.defaults.set('plugins.datalabels', { display: false });
+
+        let allSessions = {}; let filteredSessions = {}; let detectedActionIDs = {}; let detectedIntents = {}; let mapAgentes = {};
+        let configPanel = {}; let nombreArchivoCargado = '';
+        let trendChartObj = null; let weeklyChartObj = null; let intentsChartObj = null; let csatChartObj = null; 
+        let lastAgentChartObj = null;
+
+        // Variables Globales para permitir repintar las tablas
+        let lastDateStats = {}; 
+        let lastAgentStats = {};
+
+        // Listado de sesiones (paginación)
+        const MAX_SESIONES_LISTADO = 100;
+        let currentPage = 1;
+        let pageSize = 20;
+
+        const rootStyles = getComputedStyle(document.documentElement);
+        const colorBoldBlue = rootStyles.getPropertyValue('--bold-blue').trim() || '#121E6C';
+        const colorBoldRed = rootStyles.getPropertyValue('--bold-red').trim() || '#EE424E';
+        const colorBoldMagenta = rootStyles.getPropertyValue('--bold-magenta').trim() || '#BC3A55';
+        const colorBoldPlum = rootStyles.getPropertyValue('--bold-plum').trim() || '#742F5E';
+        const colorTextLight = rootStyles.getPropertyValue('--text-light').trim() || '#5f6368';
+
+        // ===================== CONFIGURACIÓN GENERAL =====================
+        // Clave de las acciones protegidas (importar, exportar, configuración)
+        const CLAVE_ACCESO = "101430";
+        const STORAGE_KEY = 'BOOST_PANEL_CONFIG_V3';
+        const STORAGE_KEY_LEGACY = 'BOOST_AGENTS_MAP'; // mapeo de la versión 2.0, se migra automáticamente
+        const CONFIG_DEFAULT = {
+            nombrePanel: '',
+            adminUrl: 'https://adminpanel-bold.boost.ai',
+            envId: '1',
+            agentes: {}
+        };
+        const VALORES_VACIOS = ['', 'nan', 'null', 'none', 'undefined', 'n/a', '-'];
+
+        // Columnas que el panel espera encontrar en el CSV (session_id es obligatoria)
+        const COLUMNA_OBLIGATORIA = 'session_id';
+        const COLUMNAS_ESPERADAS = [
+            'session_id', 'timestamp', 'user_message', 'user_button_click', 'response',
+            'is_human_chat', 'predicted_intent_title', 'displayed_action_type',
+            'displayed_action_id', 'message_feedback'
+        ];
+
+        let toastTimer = null;
+
+        window.onload = function() {
+            cargarConfiguracion();
+            actualizarEncabezado();
+            // Dibuja el panel vacío (KPIs en 0, gráficas sin datos) hasta que se importe un CSV
+            inicializarDatos([]);
+        };
+
+        function mostrarToastSync(texto, showSpinner = true, esError = false) {
+            clearTimeout(toastTimer);
+            const t = document.getElementById('syncToast');
+            document.getElementById('syncText').innerText = texto;
+            t.querySelector('.spinner').style.display = showSpinner ? 'block' : 'none';
+            t.style.background = esError ? 'var(--bold-red)' : 'var(--bold-blue)';
+            t.style.display = 'flex';
+        }
+        function ocultarToastSync() { clearTimeout(toastTimer); document.getElementById('syncToast').style.display = 'none'; }
+        function toastTemporal(texto, esError = false, ms = 4000) {
+            mostrarToastSync(texto, false, esError);
+            toastTimer = setTimeout(ocultarToastSync, ms);
+        }
+
+        function accionProtegida(accion) {
+            const claveIngresada = prompt("🔒 ACCIÓN PROTEGIDA\nIngrese la clave de seguridad para continuar:");
+            if (claveIngresada === CLAVE_ACCESO) {
+                if (accion === 'config') abrirModalConfig();
+                if (accion === 'importar') document.getElementById('csvFileInput').click();
+                if (accion === 'exportar') exportarDataLimpia();
+            } else if (claveIngresada !== null) {
+                alert("❌ Clave incorrecta.");
+            }
+        }
+
+        function leerCSV(file) {
+            return new Promise((resolve, reject) => {
+                // El CSV se procesa 100% en el navegador: no se sube a ningún servidor.
+                // PapaParse detecta automáticamente el separador (coma, punto y coma, tabulador).
+                Papa.parse(file, {
+                    header: true,
+                    skipEmptyLines: 'greedy',
+                    transformHeader: h => h.replace(/^\uFEFF/, '').trim(),
+                    complete: results => resolve({ file: file, columnas: (results.meta && results.meta.fields) || [], filas: results.data || [] }),
+                    error: err => reject(new Error(file.name + ': ' + err.message))
+                });
+            });
+        }
+
+        async function procesarArchivoCSV(event) {
+            const input = event.target;
+            const files = Array.from(input.files || []);
+            input.value = ''; // permite volver a importar el mismo archivo
+            if (!files.length) return;
+
+            mostrarToastSync(files.length === 1 ? "Leyendo " + files[0].name + "..." : "Leyendo " + files.length + " archivos...", true);
+
+            try {
+                const resultados = await Promise.all(files.map(leerCSV));
+
+                const invalidos = resultados.filter(r => !r.columnas.includes(COLUMNA_OBLIGATORIA));
+                if (invalidos.length) {
+                    toastTemporal("⚠️ Falta la columna '" + COLUMNA_OBLIGATORIA + "' en " + invalidos.length + " archivo(s).", true, 6000);
+                    alert("Estos archivos no parecen ser un export de conversaciones válido:\n\n" +
+                        invalidos.map(r => "• " + r.file.name + "\n   Columnas detectadas: " + (r.columnas.join(', ') || '(ninguna)')).join('\n') +
+                        "\n\nColumna obligatoria: " + COLUMNA_OBLIGATORIA);
+                    return;
+                }
+
+                // Unir filas de todos los archivos, descartando filas idénticas repetidas entre archivos
+                let filas = [];
+                const vistas = new Set();
+                resultados.forEach(r => r.filas.forEach(f => {
+                    const clave = files.length > 1 ? JSON.stringify(f) : null;
+                    if (clave) { if (vistas.has(clave)) return; vistas.add(clave); }
+                    filas.push(f);
+                }));
+
+                if (filas.length === 0) {
+                    toastTemporal("⚠️ El CSV no contiene filas de datos.", true, 6000);
+                    return;
+                }
+
+                // Una importación nueva reemplaza la anterior: se limpian los filtros previos
+                ['filterDateStart', 'filterDateEnd', 'localDateStart', 'localDateEnd'].forEach(id => document.getElementById(id).value = '');
+                document.getElementById('filterEscalation').value = 'all';
+                document.getElementById('filterFeedback').value = 'all';
+
+                nombreArchivoCargado = files.length === 1 ? files[0].name.replace(/\.csv$/i, '') : files.length + ' archivos';
+                inicializarDatos(filas);
+                actualizarEncabezado();
+
+                const ahora = new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
+                document.getElementById('lblLastUpdate').innerText = (files.length === 1 ? files[0].name : files.map(f => f.name).join(', ')) + " · " + ahora;
+
+                // Columnas esperadas faltantes (en al menos un archivo)
+                const faltantes = COLUMNAS_ESPERADAS.filter(c => resultados.some(r => !r.columnas.includes(c)));
+                const aviso = document.getElementById('columnWarning');
+                const nSesiones = Object.keys(allSessions).length;
+                if (faltantes.length) {
+                    aviso.innerHTML = '⚠️ <b>Columnas no encontradas:</b> ' + faltantes.map(escaparHtml).join(', ') +
+                        '. Los indicadores que dependen de ellas aparecerán vacíos o incompletos.';
+                    aviso.style.display = 'block';
+                    toastTemporal("✅ " + nSesiones + " sesiones cargadas, con columnas faltantes", true, 6000);
+                } else {
+                    aviso.style.display = 'none';
+                    toastTemporal("✅ " + filas.length + " filas · " + nSesiones + " sesiones · " +
+                        Object.keys(detectedIntents).length + " intenciones · " + Object.keys(detectedActionIDs).length + " agentes generativos");
+                }
+            } catch (e) {
+                console.error(e);
+                toastTemporal("⚠️ Error procesando el CSV: " + e.message, true, 6000);
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            const btnA = document.getElementById('btnMultiAction'); const ddA = document.getElementById('dropdownMultiAction');
+            if (btnA && ddA && !btnA.contains(e.target) && !ddA.contains(e.target)) ddA.style.display = 'none';
+            const btnI = document.getElementById('btnMultiIntent'); const ddI = document.getElementById('dropdownMultiIntent');
+            if (btnI && ddI && !btnI.contains(e.target) && !ddI.contains(e.target)) ddI.style.display = 'none';
+        });
+
+        function toggleDropdown(id) {
+            const dd = document.getElementById(id);
+            dd.style.display = (dd.style.display === 'none') ? 'block' : 'none';
+        }
+
+        function cargarConfiguracion() {
+            configPanel = JSON.parse(JSON.stringify(CONFIG_DEFAULT));
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    configPanel = Object.assign(configPanel, JSON.parse(saved));
+                } else {
+                    const legacy = localStorage.getItem(STORAGE_KEY_LEGACY);
+                    if (legacy) configPanel.agentes = JSON.parse(legacy) || {};
+                }
+            } catch (e) { console.warn('No se pudo leer la configuración guardada', e); }
+            if (!configPanel.agentes || typeof configPanel.agentes !== 'object') configPanel.agentes = {};
+            mapAgentes = configPanel.agentes;
+        }
+
+        function persistirConfiguracion() {
+            configPanel.agentes = mapAgentes;
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(configPanel)); }
+            catch (e) { console.warn('No se pudo guardar la configuración', e); }
+        }
+
+        function nombreAgenteActual() {
+            return (configPanel.nombrePanel || '').trim() || nombreArchivoCargado || '';
+        }
+
+        function actualizarEncabezado() {
+            const n = nombreAgenteActual();
+            document.getElementById('lblAgentName').innerText = n || 'Sin agente cargado';
+            document.title = 'Panel Analítico Boost AI' + (n ? ' - ' + n : ' - General');
+        }
+
+        function filtrarListaDropdown(containerId, texto) {
+            const q = texto.trim().toLowerCase();
+            document.querySelectorAll('#' + containerId + ' .dd-item').forEach(el => {
+                el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? 'flex' : 'none';
+            });
+        }
+
+        function esVacio(v) { return v === undefined || v === null || VALORES_VACIOS.includes(String(v).trim().toLowerCase()); }
+        function esVerdadero(v) { return ['true', '1', 'yes', 'si', 'sí', 'verdadero'].includes(String(v).trim().toLowerCase()); }
+        function normalizarFeedback(v) {
+            const f = String(v || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+            if (['thumbs_up', 'thumbsup', 'positive', 'positivo', 'like', 'up'].includes(f)) return 'thumbs_up';
+            if (['thumbs_down', 'thumbsdown', 'negative', 'negativo', 'dislike', 'down'].includes(f)) return 'thumbs_down';
+            return null;
+        }
+        function idAccion(v) {
+            if (esVacio(v)) return null;
+            const n = Number(String(v).trim());
+            if (!isNaN(n)) { const aid = String(Math.floor(n)); return aid === '0' ? null : aid; }
+            return String(v).trim(); // IDs no numéricos se conservan tal cual
+        }
+        // Acepta ISO (2024-05-10T14:00:00Z) y formatos día/mes/año (10/05/2024 14:00)
+        function parsearFecha(v) {
+            if (esVacio(v)) return null;
+            const s = String(v).trim();
+            const m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+            if (m) {
+                const d = new Date(Date.UTC(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)));
+                return isNaN(d) ? null : d;
+            }
+            const d = new Date(s);
+            return isNaN(d) ? null : d;
+        }
+
+        // --- SISTEMA DE LIMPIEZA TOTAL ---
+        function limpiarFiltros() {
+            document.getElementById('filterDateStart').value = '';
+            document.getElementById('filterDateEnd').value = '';
+            document.getElementById('filterSemana').value = 'all';
+            document.getElementById('filterEscalation').value = 'all';
+            document.getElementById('filterFeedback').value = 'all';
+            document.getElementById('localDateStart').value = '';
+            document.getElementById('localDateEnd').value = '';
+
+            let chkAct = document.querySelectorAll('.chk-action');
+            chkAct.forEach(c => c.checked = true);
+            actualizarSeleccion('chk-action', 'lblMultiAction', 'Todos');
+
+            let chkInt = document.querySelectorAll('.chk-intent');
+            chkInt.forEach(c => c.checked = true);
+            actualizarSeleccion('chk-intent', 'lblMultiIntent', 'Todas');
+
+            aplicarFiltros();
+        }
+
+        // --- FUNCIÓN HELPER PARA CROSS-FILTERING EN MULTISELECTS ---
+        function toggleMultiSelectOption(className, lblId, defaultText, targetValue) {
+            const chks = document.querySelectorAll('.' + className);
+            const checkedChks = Array.from(chks).filter(c => c.checked);
+            
+            // Si el valor clickeado ya es el único filtrado, significa que queremos "apagar" el filtro
+            if (checkedChks.length === 1 && checkedChks[0].value === targetValue) {
+                chks.forEach(c => c.checked = true);
+            } else {
+                // Si no, filtramos exclusivamente por este valor
+                chks.forEach(c => c.checked = (c.value === targetValue));
+            }
+            actualizarSeleccion(className, lblId, defaultText);
+            aplicarFiltros();
+        }
+
+        function inicializarDatos(data) {
+            allSessions = {}; detectedActionIDs = {}; detectedIntents = {};
+
+            data.forEach(row => {
+                const sid = row.session_id;
+                if (!sid) return;
+                
+                const fechaRow = parsearFecha(row.timestamp);
+                const dateStr = fechaRow ? fechaRow.toISOString().split('T')[0] : "Sin Fecha";
+
+                if (!allSessions[sid]) {
+                    allSessions[sid] = { 
+                        rows: [], escalated: false, date: dateStr, 
+                        actionIDs: new Set(), intents: new Set(),
+                        hasThumbsUp: false, hasThumbsDown: false, semana: "Sin Semana", lastTs: 0, genSequence: []
+                    };
+                }
+                const sesion = allSessions[sid];
+                sesion.rows.push(row);
+                if (fechaRow) {
+                    const ts = fechaRow.getTime();
+                    if (ts > sesion.lastTs) { sesion.lastTs = ts; }
+                    // La fecha de la sesión es la de su primer mensaje con fecha válida
+                    if (sesion.date === "Sin Fecha" || dateStr < sesion.date) sesion.date = dateStr;
+                }
+
+                const fb = normalizarFeedback(row.message_feedback);
+                if (fb === 'thumbs_up') sesion.hasThumbsUp = true;
+                if (fb === 'thumbs_down') sesion.hasThumbsDown = true;
+                if (esVerdadero(row.is_human_chat)) sesion.escalated = true;
+
+                if (!esVacio(row.predicted_intent_title)) {
+                    const intent = String(row.predicted_intent_title).trim();
+                    if (!sesion.intents.has(intent)) {
+                        sesion.intents.add(intent);
+                        detectedIntents[intent] = (detectedIntents[intent] || 0) + 1; // nº de sesiones con la intención
+                    }
+                }
+
+                const isGenerative = String(row.displayed_action_type || '').trim().toLowerCase() === 'generative';
+                const aid = isGenerative ? idAccion(row.displayed_action_id) : null;
+                if (aid) {
+                    sesion.actionIDs.add(aid);
+                    sesion.genSequence.push(aid); // orden de aparición, para "último agente antes de escalar"
+                    if (!detectedActionIDs[aid]) detectedActionIDs[aid] = { count: 0, type: 'generative' };
+                    detectedActionIDs[aid].count++;
+                }
+            });
+
+            let minDateStr = null;
+            Object.values(allSessions).forEach(s => { if (s.date !== "Sin Fecha" && (!minDateStr || s.date < minDateStr)) minDateStr = s.date; });
+            let minDateUTC = null;
+            if (minDateStr) { let pMin = minDateStr.split('-'); minDateUTC = Date.UTC(pMin[0], parseInt(pMin[1]) - 1, pMin[2]); }
+
+            let uniqueWeeks = new Set();
+            Object.values(allSessions).forEach(s => {
+                if (s.date !== "Sin Fecha" && minDateUTC) {
+                    let partes = s.date.split('-');
+                    let diffDays = Math.floor((Date.UTC(partes[0], parseInt(partes[1]) - 1, partes[2]) - minDateUTC) / 86400000);
+                    s.semana = "Semana " + (Math.floor(diffDays / 7) + 1);
+                }
+                uniqueWeeks.add(s.semana);
+            });
+
+            poblarFiltroSemanas(Array.from(uniqueWeeks));
+            poblarFiltrosEstaticos();
+
+            document.getElementById('emptyState').style.display = Object.keys(allSessions).length ? 'none' : 'block';
+            aplicarFiltros();
+        }
+
+        function poblarFiltroSemanas(semanasArray) {
+            const select = document.getElementById('filterSemana'); select.innerHTML = '<option value="all">Todas</option>';
+            semanasArray.sort((a, b) => (parseInt(a.replace('Semana ', '')) || 0) - (parseInt(b.replace('Semana ', '')) || 0));
+            semanasArray.forEach(sem => { if (sem !== "Sin Semana") select.innerHTML += `<option value="${sem}">${sem}</option>`; });
+        }
+
+        function poblarFiltrosEstaticos() {
+            const containerA = document.getElementById('checkboxesMultiAction');
+            containerA.innerHTML = Object.keys(detectedActionIDs)
+                .sort((a, b) => detectedActionIDs[b].count - detectedActionIDs[a].count || a.localeCompare(b))
+                .map(aid => {
+                    const name = mapAgentes[aid] || `ID ${aid}`;
+                    return `<label class="dd-item"><input type="checkbox" class="chk-action" value="${escaparHtml(aid)}" checked onchange="actualizarSeleccion('chk-action', 'lblMultiAction', 'Todos'); aplicarFiltros();"> <span>[${escaparHtml(aid)}] ${escaparHtml(name)}</span></label>`;
+                }).join('') || '<div class="cfg-help">No se detectaron agentes generativos.</div>';
+            actualizarSeleccion('chk-action', 'lblMultiAction', 'Todos');
+
+            // Intenciones detectadas en el CSV, ordenadas por número de sesiones
+            const containerI = document.getElementById('checkboxesMultiIntent');
+            containerI.innerHTML = Object.entries(detectedIntents)
+                .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+                .map(([intent, n]) => `<label class="dd-item"><input type="checkbox" class="chk-intent" value="${escaparHtml(intent)}" checked onchange="actualizarSeleccion('chk-intent', 'lblMultiIntent', 'Todas'); aplicarFiltros();"> <span>${escaparHtml(intent)}</span><span class="dd-count">${n}</span></label>`)
+                .join('') || '<div class="cfg-help">No se detectaron intenciones.</div>';
+            actualizarSeleccion('chk-intent', 'lblMultiIntent', 'Todas');
+
+            document.querySelectorAll('.dd-search').forEach(i => i.value = '');
+        }
+
+        function seleccionarTodas(className, checked) {
+            document.querySelectorAll('.' + className).forEach(c => c.checked = checked);
+            if (className === 'chk-action') actualizarSeleccion('chk-action', 'lblMultiAction', 'Todos');
+            if (className === 'chk-intent') actualizarSeleccion('chk-intent', 'lblMultiIntent', 'Todas');
+            aplicarFiltros();
+        }
+
+        function actualizarSeleccion(className, lblId, defaultText) {
+            const chks = document.querySelectorAll('.' + className); const selected = Array.from(chks).filter(c => c.checked);
+            const lbl = document.getElementById(lblId);
+            if (selected.length === chks.length || chks.length === 0) lbl.innerText = defaultText;
+            else lbl.innerText = `${selected.length} Seleccionado(s)`;
+        }
+
+        function getSelectedValues(className) { return Array.from(document.querySelectorAll('.' + className)).filter(c => c.checked).map(c => c.value); }
+
+        function aplicarFiltros() {
+            const valDateStart = document.getElementById('filterDateStart').value; const valDateEnd = document.getElementById('filterDateEnd').value;
+            const valSemana = document.getElementById('filterSemana').value; const valEscalation = document.getElementById('filterEscalation').value;
+            const valFeedback = document.getElementById('filterFeedback').value;
+            
+            const selectedActions = getSelectedValues('chk-action'); const selectedIntents = getSelectedValues('chk-intent');
+
+            let dateStats = {}; let weekStats = {}; let intentChartStats = {}; 
+            let agentTableStats = {}; let lastAgentChartStats = {}; let countThumbsUp = 0; let countThumbsDown = 0;
+            filteredSessions = {}; let totalMsgs = 0;
+
+            Object.keys(allSessions).forEach(sid => {
+                const s = allSessions[sid];
+                if (valEscalation === 'escalated' && !s.escalated) return;
+                if (valEscalation === 'deflected' && s.escalated) return;
+                if (valFeedback === 'thumbs_up' && !s.hasThumbsUp) return;
+                if (valFeedback === 'thumbs_down' && !s.hasThumbsDown) return;
+                if (valSemana !== 'all' && s.semana !== valSemana) return;
+                if (valDateStart && s.date < valDateStart) return;
+                if (valDateEnd && s.date > valDateEnd) return;
+
+                const totalAgentes = Object.keys(detectedActionIDs).length;
+                if (totalAgentes > 0 && selectedActions.length === 0) return;
+                if (selectedActions.length < totalAgentes) {
+                    if (!selectedActions.some(aid => s.actionIDs.has(aid))) return;
+                }
+
+                const totalIntents = Object.keys(detectedIntents).length;
+                if (totalIntents > 0 && selectedIntents.length === 0) return;
+                if (selectedIntents.length < totalIntents) {
+                    if (!selectedIntents.some(intent => s.intents.has(intent))) return;
+                }
+
+                filteredSessions[sid] = s;
+                totalMsgs += s.rows.length;
+
+                if (!dateStats[s.date]) dateStats[s.date] = { total: 0, deflected: 0, escalated: 0 };
+                dateStats[s.date].total++;
+                if (!s.escalated) dateStats[s.date].deflected++; else dateStats[s.date].escalated++;
+
+                if (!weekStats[s.semana]) weekStats[s.semana] = { total: 0, deflected: 0 };
+                weekStats[s.semana].total++;
+                if (!s.escalated) weekStats[s.semana].deflected++;
+
+                if (s.hasThumbsUp) countThumbsUp++; if (s.hasThumbsDown) countThumbsDown++;
+
+                s.intents.forEach(int => { intentChartStats[int] = (intentChartStats[int] || 0) + 1; });
+
+                s.actionIDs.forEach(aid => {
+                    if (!agentTableStats[aid]) agentTableStats[aid] = { total: 0, escalated: 0 };
+                    agentTableStats[aid].total++;
+                    if (s.escalated) agentTableStats[aid].escalated++;
+                });
+
+                if (s.escalated) {
+                    const lastAgent = s.genSequence.length ? s.genSequence[s.genSequence.length - 1] : null;
+                    if (lastAgent && selectedActions.includes(lastAgent)) {
+                        lastAgentChartStats[lastAgent] = (lastAgentChartStats[lastAgent] || 0) + 1;
+                    }
+                }
+            });
+
+            actualizarKPIs(totalMsgs);
+            dibujarGraficas(dateStats, weekStats, intentChartStats, countThumbsUp, countThumbsDown, lastAgentChartStats);
+            
+            // Guardar stats globalmente para renderizarTablas (y su filtro local)
+            lastDateStats = dateStats;
+            lastAgentStats = agentTableStats;
+
+            renderizarTablas();
+            currentPage = 1;
+            renderizarListadoSesiones();
+        }
+
+        function actualizarKPIs(totalMsgs) {
+            const total = Object.keys(filteredSessions).length;
+            const escaladas = Object.values(filteredSessions).filter(s => s.escalated).length;
+            document.getElementById('valTotalSessions').innerText = total;
+            document.getElementById('valDeflection').innerText = total ? ((total - escaladas) / total * 100).toFixed(1) + '%' : '0%';
+            document.getElementById('valEscalation').innerText = total ? (escaladas / total * 100).toFixed(1) + '%' : '0%';
+            document.getElementById('valAvgMsgs').innerText = total ? (totalMsgs / total).toFixed(1) : 0;
+        }
+
+        function dibujarGraficas(dateStats, weekStats, intentStats, thumbsUp, thumbsDown, lastAgentStats) {
+            const ctxD = document.getElementById('trendChart').getContext('2d');
+            const dates = Object.keys(dateStats).sort();
+            if (trendChartObj) trendChartObj.destroy();
+            trendChartObj = new Chart(ctxD, {
+                type: 'bar',
+                data: {
+                    labels: dates,
+                    datasets: [
+                        { type: 'line', label: 'Total', data: dates.map(d => dateStats[d].total), borderColor: colorBoldBlue, borderWidth: 2, fill: false, tension: 0.3, pointBackgroundColor: colorBoldBlue },
+                        { type: 'bar', label: 'Resueltas', data: dates.map(d => dateStats[d].deflected), backgroundColor: colorBoldMagenta, borderRadius: 4 }
+                    ]
+                },
+                options: { 
+                    responsive: true, maintainAspectRatio: false, 
+                    plugins: { datalabels: { display: false }, legend: { position: 'bottom', labels: { boxWidth: 10, font: {size: 10} } } },
+                    // CROSS-FILTERING: Clic en gráfica diaria
+                    onHover: (e, elements) => { e.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
+                    onClick: (e, elements) => {
+                        if(elements.length > 0) {
+                            let date = dates[elements[0].index];
+                            let dStart = document.getElementById('filterDateStart');
+                            let dEnd = document.getElementById('filterDateEnd');
+                            if(dStart.value === date && dEnd.value === date) {
+                                dStart.value = ''; dEnd.value = '';
+                            } else {
+                                dStart.value = date; dEnd.value = date;
+                            }
+                            aplicarFiltros();
+                        }
+                    }
+                }
+            });
+
+            const ctxW = document.getElementById('weeklyChart').getContext('2d');
+            const weeks = Object.keys(weekStats).sort((a, b) => (parseInt(a.replace('Semana ',''))||0) - (parseInt(b.replace('Semana ',''))||0));
+            if (weeklyChartObj) weeklyChartObj.destroy();
+            weeklyChartObj = new Chart(ctxW, {
+                type: 'bar',
+                data: {
+                    labels: weeks,
+                    datasets: [
+                        { type: 'line', label: 'Total', data: weeks.map(w => weekStats[w].total), borderColor: colorBoldBlue, borderWidth: 2, fill: false, tension: 0.3, pointBackgroundColor: colorBoldBlue },
+                        { type: 'bar', label: 'Resueltas', data: weeks.map(w => weekStats[w].deflected), backgroundColor: colorBoldMagenta, borderRadius: 4 }
+                    ]
+                },
+                options: { 
+                    responsive: true, maintainAspectRatio: false, 
+                    plugins: { 
+                        datalabels: { 
+                            display: function(ctx) { return ctx.dataset.type === 'bar'; },
+                            color: colorBoldMagenta, anchor: 'end', align: 'top', offset: -2, font: { weight: 'bold', size: 10 },
+                            formatter: function(val, ctx) {
+                                let tot = ctx.chart.data.datasets[0].data[ctx.dataIndex];
+                                return (!tot || tot == 0) ? '' : ((val / tot) * 100).toFixed(0) + '%';
+                            }
+                        },
+                        legend: { position: 'bottom', labels: { boxWidth: 10, font: {size: 10} } } 
+                    },
+                    // CROSS-FILTERING: Clic en gráfica semanal
+                    onHover: (e, elements) => { e.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
+                    onClick: (e, elements) => {
+                        if(elements.length > 0) {
+                            let week = weeks[elements[0].index];
+                            let s = document.getElementById('filterSemana');
+                            s.value = s.value === week ? 'all' : week;
+                            aplicarFiltros();
+                        }
+                    }
+                }
+            });
+
+            const ctxI = document.getElementById('intentsChart').getContext('2d');
+            const sortedInt = Object.entries(intentStats).sort((a,b) => b[1] - a[1]).slice(0, 5); 
+            const pieColors = [colorBoldBlue, colorBoldRed, colorBoldMagenta, colorBoldPlum, '#888'];
+            const fullIntents = sortedInt.map(i => i[0]); // Guardamos el nombre completo real
+
+            if (intentsChartObj) intentsChartObj.destroy();
+            intentsChartObj = new Chart(ctxI, {
+                type: 'doughnut',
+                data: { labels: sortedInt.map(i => i[0].length > 25 ? i[0].substring(0, 25) + "..." : i[0]), datasets: [{ data: sortedInt.map(i => i[1]), backgroundColor: pieColors, borderWidth: 1 }] },
+                options: { 
+                    responsive: true, maintainAspectRatio: false, 
+                    plugins: { 
+                        datalabels: {
+                            display: true, color: '#ffffff', font: { weight: 'bold', size: 11 }, textAlign: 'center',
+                            formatter: (val, ctx) => {
+                                let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                return val + '\n(' + (val * 100 / sum).toFixed(1) + '%)';
+                            }
+                        },
+                        legend: { position: 'right', labels: { boxWidth: 10, font: {size: 11} } } 
+                    }, cutout: '55%',
+                    // CROSS-FILTERING: Clic en Dona Intenciones
+                    onHover: (e, elements) => { e.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
+                    onClick: (e, elements) => {
+                        if(elements.length > 0) {
+                            let intent = fullIntents[elements[0].index];
+                            toggleMultiSelectOption('chk-intent', 'lblMultiIntent', 'Todas', intent);
+                        }
+                    }
+                }
+            });
+
+            const ctxC = document.getElementById('csatChart').getContext('2d');
+            if (csatChartObj) csatChartObj.destroy();
+            if (thumbsUp === 0 && thumbsDown === 0) {
+                csatChartObj = new Chart(ctxC, { type: 'doughnut', data: { labels: ['Sin Votos'], datasets: [{ data: [1], backgroundColor: ['#eee'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { datalabels: {display:false}, tooltip: {enabled: false}, legend: {display: false} }, cutout: '65%' } });
+            } else {
+                csatChartObj = new Chart(ctxC, {
+                    type: 'doughnut',
+                    data: { labels: ['👍 Útil', '👎 No Útil'], datasets: [{ data: [thumbsUp, thumbsDown], backgroundColor: ['#28a745', colorBoldRed], borderWidth: 1 }] },
+                    options: { 
+                        responsive: true, maintainAspectRatio: false, 
+                        plugins: { 
+                            datalabels: { display: true, color: '#ffffff', font: { weight: 'bold', size: 12 }, textAlign: 'center', formatter: (val, ctx) => { let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); return val + '\n(' + (val * 100 / sum).toFixed(1) + '%)'; } },
+                            legend: { position: 'bottom', labels: { boxWidth: 10, font: {size: 11} } } 
+                        }, cutout: '60%',
+                        // CROSS-FILTERING: Clic en Dona CSAT
+                        onHover: (e, elements) => { e.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
+                        onClick: (e, elements) => {
+                            if(elements.length > 0) {
+                                let fb = document.getElementById('filterFeedback');
+                                if (elements[0].index === 0) { fb.value = fb.value === 'thumbs_up' ? 'all' : 'thumbs_up'; }
+                                else if (elements[0].index === 1) { fb.value = fb.value === 'thumbs_down' ? 'all' : 'thumbs_down'; }
+                                aplicarFiltros();
+                            }
+                        }
+                    }
+                });
+            }
+
+            // GRÁFICA INTERACTIVA: Último agente antes de escalar
+            const ctxL = document.getElementById('lastAgentChart').getContext('2d');
+            if (lastAgentChartObj) lastAgentChartObj.destroy();
+            
+            const sortedLastAgents = Object.entries(lastAgentStats)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5);
+
+            const rawIdsLastAgents = sortedLastAgents.map(item => item[0]); 
+            const labelsLastAgents = sortedLastAgents.map(item => {
+                let aid = item[0]; let name = mapAgentes[aid] || `ID ${aid}`;
+                return `[${aid}] ` + (name.length > 50 ? name.substring(0, 50) + "..." : name);
+            });
+            const dataLastAgents = sortedLastAgents.map(item => item[1]);
+
+            lastAgentChartObj = new Chart(ctxL, {
+                type: 'bar',
+                data: {
+                    labels: labelsLastAgents.length ? labelsLastAgents : ['Sin datos'],
+                    datasets: [{
+                        label: 'Fugas (Escalamientos)',
+                        data: dataLastAgents.length ? dataLastAgents : [0],
+                        backgroundColor: colorBoldRed,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', 
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: { display: true, color: '#000', anchor: 'end', align: 'right', font: { weight: 'bold', size: 11 } }
+                    },
+                    scales: { x: { beginAtZero: true, suggestedMax: Math.max(...(dataLastAgents.length ? dataLastAgents : [0])) + 2 } },
+                    // CROSS-FILTERING: Clic en Barra de Agente
+                    onHover: (e, elements) => { e.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
+                    onClick: (e, elements) => {
+                        if(elements.length > 0) {
+                            let aid = rawIdsLastAgents[elements[0].index];
+                            toggleMultiSelectOption('chk-action', 'lblMultiAction', 'Todos', aid);
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderizarTablas() {
+            // TABLA DE FECHAS
+            const tDate = document.getElementById('tableDateBody'); tDate.innerHTML = '';
+            const selectedDateStart = document.getElementById('filterDateStart').value;
+            const localStart = document.getElementById('localDateStart').value;
+            const localEnd = document.getElementById('localDateEnd').value;
+
+            Object.keys(lastDateStats).sort((a,b) => b.localeCompare(a)).forEach(d => {
+                if (localStart && d < localStart) return;
+                if (localEnd && d > localEnd) return;
+
+                const st = lastDateStats[d];
+                const defRate = st.total ? ((st.deflected / st.total) * 100).toFixed(1) : "0.0";
+                const tr = document.createElement('tr');
+                if (selectedDateStart === d) tr.classList.add('active');
+                
+                // CROSS-FILTERING
+                tr.onclick = function() { 
+                    document.getElementById('filterDateStart').value = (selectedDateStart === d) ? '' : d; 
+                    document.getElementById('filterDateEnd').value = document.getElementById('filterDateStart').value; 
+                    aplicarFiltros(); 
+                };
+                
+                tr.innerHTML = `<td><b>${d}</b></td><td>${st.total}</td><td style="color:var(--bold-blue)">${st.deflected}</td><td style="color:var(--bold-red)">${st.escalated}</td><td><b>${defRate}%</b></td>`;
+                tDate.appendChild(tr);
+            });
+
+            // TABLA DE AGENTES INDIVIDUALES
+            const tAgt = document.getElementById('tableAgentBody'); tAgt.innerHTML = '';
+            const selectedActions = getSelectedValues('chk-action');
+            const isFilteredAction = selectedActions.length === 1;
+            const activeAction = isFilteredAction ? selectedActions[0] : null;
+
+            Object.entries(lastAgentStats).sort((a,b) => b[1].escalated - a[1].escalated).forEach(([aid, st]) => {
+                const failRate = st.total ? ((st.escalated / st.total) * 100).toFixed(1) : "0.0";
+                let name = mapAgentes[aid] || `ID ${aid}`;
+                let colorClass = st.escalated > 0 ? `style="color:var(--bold-red); font-weight:bold;"` : "";
+                
+                const tr = document.createElement('tr');
+                if (activeAction === aid) tr.classList.add('active');
+
+                // CROSS-FILTERING
+                tr.onclick = () => toggleMultiSelectOption('chk-action', 'lblMultiAction', 'Todos', aid);
+
+                tr.innerHTML = `<td title="${escaparHtml(name)}">[${escaparHtml(aid)}] ${escaparHtml(name.length > 30 ? name.substring(0,30)+".." : name)}</td><td>${st.total}</td><td ${colorClass}>${st.escalated}</td><td><b>${failRate}%</b></td>`;
+                tAgt.appendChild(tr);
+            });
+        }
+
+        // --- LISTADO DE SESIONES ---
+        function escaparHtml(t) {
+            return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function irAPagina(n) { currentPage = n; renderizarListadoSesiones(); }
+
+        function cambiarTamanoPagina() {
+            pageSize = parseInt(document.getElementById('pageSizeSelect').value) || 20;
+            currentPage = 1;
+            renderizarListadoSesiones();
+        }
+
+        function construirAccionSesion(sid, s) {
+            const base = (configPanel.adminUrl || '').trim().replace(/\/+$/, '');
+            if (!base) {
+                return `<button class="btn btn-secondary" style="padding: 4px 8px; font-size:10px;" data-sid="${escaparHtml(sid)}" onclick="copiarTexto(this.dataset.sid)">Copiar ID</button>`;
+            }
+            const conFecha = s.date && s.date !== "Sin Fecha";
+            const params = new URLSearchParams();
+            params.set('conversation_text_sources', 'all');
+            if (conFecha) params.set('from_date', s.date);
+            params.set('log_environment_id', (configPanel.envId || '1').trim());
+            params.set('no_utterance_calls', 'exclude');
+            params.set('page', '1');
+            params.set('session_id', sid);
+            if (conFecha) params.set('to_date', s.date);
+            params.set('visited_url_criteria', 'starts_with');
+            const url = `${base}/conversationAnalytics?${params.toString()}`;
+            return `<a href="${escaparHtml(url)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="padding: 4px 8px; font-size:10px; text-decoration: none;">Ver Chat ↗</a>`;
+        }
+
+        function copiarTexto(t) {
+            const ok = () => toastTemporal("📋 ID copiado: " + t, false, 2500);
+            if (navigator.clipboard) navigator.clipboard.writeText(t).then(ok).catch(() => prompt("Copia el ID:", t));
+            else prompt("Copia el ID:", t);
+        }
+
+        function renderizarListadoSesiones() {
+            const tbody = document.getElementById('sessionsTableBody');
+
+            // Más recientes primero (último mensaje de cada sesión); tope de 100
+            const ordenadas = Object.keys(filteredSessions)
+                .map(sid => ({ sid: sid, s: filteredSessions[sid] }))
+                .sort((a, b) => (b.s.lastTs - a.s.lastTs) || b.s.date.localeCompare(a.s.date));
+            const top = ordenadas.slice(0, MAX_SESIONES_LISTADO);
+
+            document.getElementById('sessionsSubtitle').innerHTML =
+                `Top <b>${top.length}</b> recientes` + (ordenadas.length > top.length ? ` (de ${ordenadas.length} filtradas)` : '');
+
+            if (top.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="sessions-empty">Sin sesiones para mostrar. Importa un CSV o ajusta los filtros.</td></tr>';
+                document.getElementById('paginationControls').innerHTML = '';
+                return;
+            }
+
+            const totalPages = Math.max(1, Math.ceil(top.length / pageSize));
+            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 1) currentPage = 1;
+            const pageSessions = top.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+            let htmlFragments = [];
+            pageSessions.forEach(item => {
+                let sid = item.sid;
+                let s = item.s;
+                const estado = s.escalated ? '<span style="color:var(--bold-red); font-weight:bold;">🔴 Escalada</span>' : '<span style="color:green; font-weight:bold;">🟢 Resuelta</span>';
+                const accion = construirAccionSesion(sid, s);
+
+                htmlFragments.push(`
+                    <tr>
+                        <td>${escaparHtml(sid)}</td>
+                        <td>${s.date}</td>
+                        <td>${estado}</td>
+                        <td>
+                            ${accion}
+                        </td>
+                    </tr>
+                `);
+            });
+            tbody.innerHTML = htmlFragments.join('');
+
+            let pagHtml = [];
+            for (let i = 1; i <= totalPages; i++) {
+                let isActive = i === currentPage ? 'background: var(--bold-blue); color: white;' : 'background: var(--surface); color: var(--text); border: 1px solid var(--border);';
+                pagHtml.push(`<button onclick="irAPagina(${i})" style="padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; ${isActive}">${i}</button>`);
+            }
+            document.getElementById('paginationControls').innerHTML = pagHtml.join('');
+        }
+
+        function exportarDataLimpia() {
+            if (Object.keys(filteredSessions).length === 0) {
+                alert("No hay sesiones para exportar. Importa un CSV o ajusta los filtros.");
+                return;
+            }
+            mostrarToastSync("Generando CSV...", true);
+            const listaAgentesIDs = Object.keys(detectedActionIDs).sort();
+            const columnasAgentes = listaAgentesIDs.map(aid => "Uso Agente: " + (mapAgentes[aid] || `ID ${aid}`));
+
+            let encabezados = ["Agente / Producto", "ID Sesión", "Fecha Completa", "Semana", "Día Semana", "Día", "Mes", "Año", "Estado", "Intenciones", "CSAT", "Mensajes"].concat(columnasAgentes);
+            let datosParaHoja = [encabezados];
+            const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+            Object.keys(filteredSessions).forEach(sid => {
+                const s = filteredSessions[sid];
+                let diaSemana = "", dia = "", mes = "", ano = "";
+                if (s.date && s.date !== "Sin Fecha") {
+                    let partes = s.date.split('-');
+                    if(partes.length === 3) { ano = partes[0]; mes = partes[1]; dia = partes[2]; diaSemana = diasSemana[new Date(ano, parseInt(mes) - 1, dia).getDay()]; }
+                }
+                const estado = s.escalated ? "Escalado a Humano" : "Resuelto por Bot";
+                const intenciones = Array.from(s.intents).join(" | ") || "Ninguna";
+                let feedback = "Sin voto";
+                if (s.hasThumbsUp && s.hasThumbsDown) feedback = "Mixtos"; else if (s.hasThumbsUp) feedback = "Positivo"; else if (s.hasThumbsDown) feedback = "Negativo";
+                
+                let fila = [nombreAgenteActual(), sid, s.date, s.semana, diaSemana, dia, mes, ano, estado, intenciones, feedback, s.rows.length];
+                listaAgentesIDs.forEach(aid => { fila.push(s.actionIDs.has(aid) ? "Sí" : "No"); });
+                datosParaHoja.push(fila);
+            });
+
+            // Descarga local (UTF-8 con BOM para que Excel respete tildes y ñ)
+            const csv = Papa.unparse(datosParaHoja);
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const slug = nombreAgenteActual().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+            a.download = 'Boost_AI_' + (slug ? slug + '_' : '') + 'Data_Limpia_' + new Date().toISOString().split('T')[0] + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            toastTemporal("✅ CSV exportado: " + (datosParaHoja.length - 1) + " sesiones");
+        }
+
+        function abrirModalConfig() {
+            document.getElementById('cfgNombre').value = configPanel.nombrePanel || '';
+            document.getElementById('cfgUrl').value = configPanel.adminUrl || '';
+            document.getElementById('cfgEnv').value = configPanel.envId || '';
+
+            const tbody = document.getElementById('tableAgentsBody');
+            const ids = Object.keys(detectedActionIDs).sort((a, b) => detectedActionIDs[b].count - detectedActionIDs[a].count || a.localeCompare(b));
+            tbody.innerHTML = ids.length
+                ? ids.map((aid, i) => `<tr><td style="border-bottom: 1px solid var(--border);"><b>${escaparHtml(aid)}</b></td><td style="border-bottom: 1px solid var(--border);">${detectedActionIDs[aid].count}</td><td style="border-bottom: 1px solid var(--border);"><input type="text" class="cfg-agent-input" data-aid="${escaparHtml(aid)}" value="${escaparHtml(mapAgentes[aid] || '')}" placeholder="Nombre del agente ${escaparHtml(aid)}" style="width: 95%;"></td></tr>`).join('')
+                : '<tr><td colspan="3" class="sessions-empty">Importa un CSV para ver los agentes generativos detectados. Los nombres ya guardados se conservan.</td></tr>';
+            document.getElementById('modalConfig').style.display = 'flex';
+        }
+        function cerrarModalConfig() { document.getElementById('modalConfig').style.display = 'none'; }
+
+        function aplicarCambiosConfiguracion() {
+            persistirConfiguracion();
+            actualizarEncabezado();
+            poblarFiltrosEstaticos();
+            aplicarFiltros();
+        }
+
+        function guardarConfiguracion() {
+            configPanel.nombrePanel = document.getElementById('cfgNombre').value.trim();
+            configPanel.adminUrl = document.getElementById('cfgUrl').value.trim();
+            configPanel.envId = document.getElementById('cfgEnv').value.trim() || '1';
+            document.querySelectorAll('.cfg-agent-input').forEach(i => {
+                const aid = i.dataset.aid; const v = i.value.trim();
+                if (v) mapAgentes[aid] = v; else delete mapAgentes[aid];
+            });
+            cerrarModalConfig();
+            aplicarCambiosConfiguracion();
+            toastTemporal("✅ Configuración guardada");
+        }
+
+        // Permite compartir la configuración (nombres de agentes, URL) entre personas o equipos
+        function exportarConfiguracion() {
+            const datos = JSON.stringify(Object.assign({}, configPanel, { agentes: mapAgentes, version: 3 }), null, 2);
+            const blob = new Blob([datos], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const slug = (configPanel.nombrePanel || 'general').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_');
+            a.href = url; a.download = 'Boost_AI_Config_' + slug + '.json';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        function importarConfiguracion(event) {
+            const file = event.target.files[0]; event.target.value = '';
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const data = JSON.parse(reader.result);
+                    if (typeof data !== 'object' || !data) throw new Error('formato inválido');
+                    // Admite el formato v3 completo o un mapa simple { "id": "nombre" }
+                    const agentes = (data.agentes && typeof data.agentes === 'object') ? data.agentes
+                        : (!('nombrePanel' in data) && !('adminUrl' in data) ? data : {});
+                    if (typeof data.nombrePanel === 'string') configPanel.nombrePanel = data.nombrePanel;
+                    if (typeof data.adminUrl === 'string') configPanel.adminUrl = data.adminUrl;
+                    if (data.envId !== undefined) configPanel.envId = String(data.envId);
+                    Object.entries(agentes).forEach(([k, v]) => { if (typeof v === 'string' && v.trim()) mapAgentes[k] = v.trim(); });
+                    aplicarCambiosConfiguracion();
+                    abrirModalConfig();
+                    toastTemporal("✅ Configuración importada");
+                } catch (e) {
+                    toastTemporal("⚠️ El archivo de configuración no es válido: " + e.message, true, 6000);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function restablecerConfiguracion() {
+            if (!confirm("Se borrarán el nombre del agente, la URL y todos los nombres de agentes generativos guardados en este navegador. ¿Continuar?")) return;
+            configPanel = JSON.parse(JSON.stringify(CONFIG_DEFAULT));
+            mapAgentes = configPanel.agentes;
+            try { localStorage.removeItem(STORAGE_KEY_LEGACY); } catch (e) {}
+            aplicarCambiosConfiguracion();
+            abrirModalConfig();
+            toastTemporal("↺ Configuración restablecida");
+        }
+    </script>
+</body>
+</html>
